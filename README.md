@@ -2,9 +2,7 @@
 需要準備以下材料
 
 控制板部分
-
 Esp32 Super mini x1
-
 IRLB8743 x1
 
 SB560 x1
