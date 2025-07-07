@@ -43,7 +43,7 @@ BPT1/4-6mmPu管快接 x1
 24x2.4 Oring x2
 
 波箱我直接使用G&G班機組 可以使用兩個微動開關並使用m2螺絲固定於波殼上代替
-
+![Image of PCB ](https://github.com/coffeeQQ/Hpa-Engine/blob/main/PHOTO/Screenshot%202025-07-07%20215032.png)
 -
 
 工具部分
