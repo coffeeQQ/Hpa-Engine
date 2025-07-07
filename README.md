@@ -21,6 +21,7 @@ XH2.54 2Pin90度插座x1
 
 24awg導線2m
 
+[https://discord.com/channels/@me/1275483061886386197/1391755699868012655](https://cdn.discordapp.com/attachments/1275483061886386197/1391755699620675604/image.png?ex=686d0d00&is=686bbb80&hm=7a2ea8a4c28b30169bf995da8c842cc915ab48fac5365e1fed246bc3e752c425&)
 -
 
 波箱部分
