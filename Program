@@ -1,0 +1,459 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <Preferences.h>
+
+// 硬體引腳定義
+#define TRIGGER_PIN 6
+#define SOLENOID_PIN 3
+#define MODE_PIN 7
+
+// 參數變量
+int DWELL_TIME = 10;
+int ROF_DELAY = 20;
+int BURST_COUNT = 3;
+int BURST_INTERVAL = 70;
+
+// 射擊模式
+enum FireMode {
+  MODE_SINGLE,
+  MODE_FULL_AUTO,
+  MODE_DOUBLE_ACTION,
+  MODE_CUSTOM_BURST
+};
+
+FireMode singlePosMode = MODE_SINGLE;
+FireMode autoPosMode = MODE_FULL_AUTO;
+
+// WiFi设置
+const char* ssid = "COFFEE.HPA.FCU";
+const char* password = "12345678";
+WebServer server(80);
+
+// 使用Preferences替代原始EEPROM
+Preferences prefs;
+
+// 函數前置聲明
+void handleRoot();
+void handleSetParams();
+void handleSave();
+void handleReset();
+void loadSettings();
+void saveSettings();
+void singleShot();
+void fullAutoMode();
+void doubleAction();
+void customBurst();
+
+void setup() {
+  Serial.begin(115200);
+  
+  // 初始化引腳
+  pinMode(TRIGGER_PIN, INPUT_PULLUP);
+  pinMode(SOLENOID_PIN, OUTPUT);
+  pinMode(MODE_PIN, INPUT_PULLUP);
+  digitalWrite(SOLENOID_PIN, LOW);
+  
+  // 初始化 Preferences
+  if (!prefs.begin("hpa-settings", false)) {
+    Serial.println("Failed to initialize preferences");
+  } else {
+    Serial.println("Preferences initialized successfully");
+  }
+  
+  // 加載設置
+  loadSettings();
+  
+  // 设置WiFi
+  WiFi.softAP(ssid, password);
+  Serial.println("WiFi AP started");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.softAPIP());
+  
+  // 設定Web伺服器
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/setparams", HTTP_POST, handleSetParams);
+  server.on("/save", HTTP_GET, handleSave);
+  server.on("/reset", HTTP_GET, handleReset);
+  
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
+void loop() {
+  server.handleClient();
+  
+  if (!digitalRead(TRIGGER_PIN)) {
+    if (!digitalRead(MODE_PIN)) {
+      // 連發位置模式
+      switch(autoPosMode) {
+        case MODE_SINGLE: singleShot(); break;
+        case MODE_FULL_AUTO: fullAutoMode(); break;
+        case MODE_DOUBLE_ACTION: doubleAction(); break;
+        case MODE_CUSTOM_BURST: customBurst(); break;
+      }
+    } else {
+      // 單發位置模式
+      switch(singlePosMode) {
+        case MODE_SINGLE: singleShot(); break;
+        case MODE_FULL_AUTO: fullAutoMode(); break;
+        case MODE_DOUBLE_ACTION: doubleAction(); break;
+        case MODE_CUSTOM_BURST: customBurst(); break;
+      }
+    }
+  } else {
+    digitalWrite(SOLENOID_PIN, LOW);
+  }
+}
+
+// 模塊
+void singleShot() {
+  digitalWrite(SOLENOID_PIN, HIGH);
+  delay(DWELL_TIME);
+  digitalWrite(SOLENOID_PIN, LOW);
+  while (!digitalRead(TRIGGER_PIN)) {}
+  delay(50);
+}
+
+void fullAutoMode() {
+  digitalWrite(SOLENOID_PIN, HIGH);
+  delay(DWELL_TIME);
+  digitalWrite(SOLENOID_PIN, LOW);
+  delay(ROF_DELAY);
+}
+
+void doubleAction() {
+  digitalWrite(SOLENOID_PIN, HIGH);
+  delay(DWELL_TIME);
+  digitalWrite(SOLENOID_PIN, LOW);
+  while (!digitalRead(TRIGGER_PIN)) {}
+  delay(50);
+  digitalWrite(SOLENOID_PIN, HIGH);
+  delay(DWELL_TIME);
+  digitalWrite(SOLENOID_PIN, LOW);
+  delay(100);
+}
+
+void customBurst() {
+  for (int i = 0; i < BURST_COUNT; i++) {
+    digitalWrite(SOLENOID_PIN, HIGH);
+    delay(DWELL_TIME);
+    digitalWrite(SOLENOID_PIN, LOW);
+    if (i < BURST_COUNT - 1) delay(BURST_INTERVAL);
+  }
+  while (!digitalRead(TRIGGER_PIN)) {}
+  delay(50);
+}
+
+// 設定管理
+void loadSettings() {
+  Serial.println("Loading settings from preferences...");
+  prefs.begin("hpa-settings", true);
+  
+  DWELL_TIME = prefs.getInt("dwell", 10);
+  ROF_DELAY = prefs.getInt("rof", 20);
+  BURST_COUNT = prefs.getInt("burst", 3);
+  BURST_INTERVAL = prefs.getInt("interval", 100);
+  singlePosMode = (FireMode)prefs.getUChar("single", MODE_SINGLE);
+  autoPosMode = (FireMode)prefs.getUChar("auto", MODE_FULL_AUTO);
+  
+  // 驗證參數範圍
+  if(DWELL_TIME < 1 || DWELL_TIME > 100) DWELL_TIME = 10;
+  if(ROF_DELAY < 1 || ROF_DELAY > 500) ROF_DELAY = 20;
+  if(BURST_COUNT < 1 || BURST_COUNT > 10) BURST_COUNT = 3;
+  if(BURST_INTERVAL < 1 || BURST_INTERVAL > 1000) BURST_INTERVAL = 100;
+  if(singlePosMode > MODE_CUSTOM_BURST) singlePosMode = MODE_SINGLE;
+  if(autoPosMode > MODE_CUSTOM_BURST) autoPosMode = MODE_FULL_AUTO;
+  
+  Serial.printf("Loaded settings: dwell=%d, rof=%d, burst=%d, interval=%d, singleMode=%d, autoMode=%d\n",
+               DWELL_TIME, ROF_DELAY, BURST_COUNT, BURST_INTERVAL, singlePosMode, autoPosMode);
+  
+  prefs.end();
+}
+
+void saveSettings() {
+  Serial.println("Saving settings to preferences...");
+  prefs.begin("hpa-settings", false);
+  
+  prefs.putInt("dwell", DWELL_TIME);
+  prefs.putInt("rof", ROF_DELAY);
+  prefs.putInt("burst", BURST_COUNT);
+  prefs.putInt("interval", BURST_INTERVAL);
+  prefs.putUChar("single", (uint8_t)singlePosMode);
+  prefs.putUChar("auto", (uint8_t)autoPosMode);
+  
+  Serial.printf("Saved settings: dwell=%d, rof=%d, burst=%d, interval=%d, singleMode=%d, autoMode=%d\n",
+               DWELL_TIME, ROF_DELAY, BURST_COUNT, BURST_INTERVAL, singlePosMode, autoPosMode);
+  
+  prefs.end();
+}
+
+void handleReset() {
+  Serial.println("Resetting to default settings...");
+  DWELL_TIME = 10;
+  ROF_DELAY = 20;
+  BURST_COUNT = 3;
+  BURST_INTERVAL = 70;
+  singlePosMode = MODE_SINGLE;
+  autoPosMode = MODE_FULL_AUTO;
+  
+  saveSettings();
+  
+  String html = "<script>alert('已恢復預設設定！');window.location='/';</script>";
+  server.send(200, "text/html", html);
+}
+
+// Web介面處理
+void handleRoot() {
+  String html = R"=====(
+<!DOCTYPE html>
+<html>
+<head>
+  <title>HPA CONTROL</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; background-color: #333; color: #eee; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; }
+    h1 { color: #ff9800; text-align: center; }
+    .mode-section { background-color: #444; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    h2 { color: #ff9800; margin-top: 0; }
+    .btn-group { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+    .btn { background-color: #ff9800; color: #333; border: none; padding: 10px 15px; 
+           border-radius: 4px; cursor: pointer; font-weight: bold; flex: 1; min-width: 100px; text-align: center; }
+    .btn.active { background-color: #ff5722; color: white; }
+    .param-form { background-color: #444; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    .param-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; color: #ff9800; }
+    .slider { width: 100%; height: 15px; border-radius: 5px; background: #555; outline: none; -webkit-appearance: none; }
+    .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 25px; height: 25px; border-radius: 50%; background: #ff9800; cursor: pointer; }
+    .value-display { display: inline-block; width: 50px; text-align: right; }
+    .save-area { display: flex; gap: 10px; }
+    .save-btn { background-color: #4caf50; color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; flex: 1; }
+    .reset-btn { background-color: #f44336; color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; flex: 1; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background-color: #4CAF50; color: white; 
+             padding: 10px; border-radius: 4px; z-index: 1000; display: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>HPA CONTROL</h1>
+  
+  <div class="mode-section">
+    <h2>單發位置模式</h2>
+    <div class="btn-group" id="single_pos_btn_group">
+      <button class="btn" onclick="setMode('single_pos','single')" id="single_pos_single" data-mode="single">單發模式</button>
+      <button class="btn" onclick="setMode('single_pos','auto')" id="single_pos_auto" data-mode="auto">連發模式</button>
+      <button class="btn" onclick="setMode('single_pos','double')" id="single_pos_double" data-mode="double">雙向扳機</button>
+      <button class="btn" onclick="setMode('single_pos','burst')" id="single_pos_burst" data-mode="burst">自定義連發</button>
+    </div>
+  </div>
+  
+  <div class="mode-section">
+    <h2>連發位置模式</h2>
+    <div class="btn-group" id="auto_pos_btn_group">
+      <button class="btn" onclick="setMode('auto_pos','single')" id="auto_pos_single" data-mode="single">單發模式</button>
+      <button class="btn" onclick="setMode('auto_pos','auto')" id="auto_pos_auto" data-mode="auto">連發模式</button>
+      <button class="btn" onclick="setMode('auto_pos','double')" id="auto_pos_double" data-mode="double">雙向扳機</button>
+      <button class="btn" onclick="setMode('auto_pos','burst')" id="auto_pos_burst" data-mode="burst">自定義連發</button>
+    </div>
+  </div>
+  
+  <div class="param-form">
+    <h2>參數設定</h2>
+    <div class="param-group">
+      <label for="dwell">電磁閥開啟時間: <span class="value-display" id="dwell_value">)=====";
+  html += DWELL_TIME;
+  html += R"=====(</span> ms</label>
+      <input type="range" id="dwell" min="1" max="50" value=")=====";
+  html += DWELL_TIME;
+  html += R"=====(" class="slider">
+    </div>
+    <div class="param-group">
+      <label for="rof">連發射速控制: <span class="value-display" id="rof_value">)=====";
+  html += ROF_DELAY;
+  html += R"=====(</span> ms</label>
+      <input type="range" id="rof" min="1" max="150" value=")=====";
+  html += ROF_DELAY;
+  html += R"=====(" class="slider">
+    </div>
+    <div class="param-group">
+      <label>預測射速: <span class="value-display" id="rps_value">)=====";
+  float rps = 1000.0 / (DWELL_TIME + ROF_DELAY);
+  html += String(rps, 1);
+  html += R"=====(</span> RPS</label>
+    </div>
+    <div class="param-group">
+      <label for="burst_count">自定義連發次數: <span class="value-display" id="burst_count_value">)=====";
+  html += BURST_COUNT;
+  html += R"=====(</span> 發</label>
+      <input type="range" id="burst_count" min="1" max="15" value=")=====";
+  html += BURST_COUNT;
+  html += R"=====(" class="slider">
+    </div>
+    <div class="param-group">
+      <label for="burst_interval">自定義連發間隔: <span class="value-display" id="burst_interval_value">)=====";
+  html += BURST_INTERVAL;
+  html += R"=====(</span> ms</label>
+      <input type="range" id="burst_interval" min="1" max="300" value=")=====";
+  html += BURST_INTERVAL;
+  html += R"=====(" class="slider">
+    </div>
+    
+    <div class="save-area">
+      <button class="save-btn" onclick="saveSettings()">儲存設定</button>
+      <button class="reset-btn" onclick="resetSettings()">恢復預設</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// 初始化按鈕狀態
+document.addEventListener('DOMContentLoaded', function() {
+  updateButtonStates();
+  updateRPS();
+});
+
+// 滑動條事件監聽
+document.querySelectorAll('.slider').forEach(slider => {
+  document.getElementById(slider.id + "_value").textContent = slider.value;
+  slider.addEventListener('input', function() {
+    document.getElementById(this.id + "_value").textContent = this.value;
+    updateRPS();
+  });
+});
+
+// 更新按鈕狀態
+function updateButtonStates() {
+  const singleMode = ")=====";
+  html += (singlePosMode == MODE_SINGLE) ? "single" : 
+          (singlePosMode == MODE_FULL_AUTO) ? "auto" :
+          (singlePosMode == MODE_DOUBLE_ACTION) ? "double" : "burst";
+  html += R"=====(";
+  const autoMode = ")=====";
+  html += (autoPosMode == MODE_SINGLE) ? "single" : 
+          (autoPosMode == MODE_FULL_AUTO) ? "auto" :
+          (autoPosMode == MODE_DOUBLE_ACTION) ? "double" : "burst";
+  html += R"=====(";
+  
+  document.querySelectorAll('#single_pos_btn_group .btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === singleMode);
+  });
+  
+  document.querySelectorAll('#auto_pos_btn_group .btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === autoMode);
+  });
+}
+
+// RPS計算
+function updateRPS() {
+  const dwell = parseInt(document.getElementById('dwell').value);
+  const rof = parseInt(document.getElementById('rof').value);
+  const rps = 1000 / (dwell + rof);
+  document.getElementById('rps_value').textContent = rps.toFixed(1);
+}
+
+// 設定模式
+function setMode(position, mode) {
+  const btnGroup = document.getElementById(position + '_btn_group');
+  btnGroup.querySelectorAll('.btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  document.getElementById(`${position}_${mode}`).classList.add('active');
+}
+
+// 儲存設定
+function saveSettings() {
+  const singleMode = document.querySelector('#single_pos_btn_group .btn.active').dataset.mode;
+  const autoMode = document.querySelector('#auto_pos_btn_group .btn.active').dataset.mode;
+  
+  const params = new URLSearchParams();
+  params.append('single', singleMode);
+  params.append('auto', autoMode);
+  params.append('dwell', document.getElementById('dwell').value);
+  params.append('rof', document.getElementById('rof').value);
+  params.append('burst_count', document.getElementById('burst_count').value);
+  params.append('burst_interval', document.getElementById('burst_interval').value);
+
+  fetch('/setparams', {
+    method: 'POST',
+    body: params
+  }).then(response => response.text())
+    .then(text => {
+      showToast(text);
+      console.log(text);
+    })
+    .catch(err => {
+      showToast('保存失敗');
+      console.error(err);
+    });
+}
+
+// 重置设置
+function resetSettings() {
+  if(confirm('確定要恢復預設設定嗎？')) {
+    fetch('/reset').then(response => response.text())
+      .then(text => {
+        showToast(text);
+        setTimeout(() => location.reload(), 1000);
+      })
+      .catch(err => {
+        showToast('重置失敗');
+        console.error(err);
+      });
+  }
+}
+
+// 顯示提示
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.style.display = 'block';
+  setTimeout(() => toast.style.display = 'none', 2000);
+}
+</script>
+</body>
+</html>
+)=====";
+
+  server.send(200, "text/html; charset=utf-8", html);
+}
+
+void handleSetParams() {
+  if (server.hasArg("single") && server.hasArg("auto") &&
+      server.hasArg("dwell") && server.hasArg("rof") && 
+      server.hasArg("burst_count") && server.hasArg("burst_interval")) {
+      
+    // 處理模式選擇
+    String singleMode = server.arg("single");
+    if (singleMode == "single") singlePosMode = MODE_SINGLE;
+    else if (singleMode == "auto") singlePosMode = MODE_FULL_AUTO;
+    else if (singleMode == "double") singlePosMode = MODE_DOUBLE_ACTION;
+    else if (singleMode == "burst") singlePosMode = MODE_CUSTOM_BURST;
+
+    String autoMode = server.arg("auto");
+    if (autoMode == "single") autoPosMode = MODE_SINGLE;
+    else if (autoMode == "auto") autoPosMode = MODE_FULL_AUTO;
+    else if (autoMode == "double") autoPosMode = MODE_DOUBLE_ACTION;
+    else if (autoMode == "burst") autoPosMode = MODE_CUSTOM_BURST;
+
+    // 更新參數
+    DWELL_TIME = server.arg("dwell").toInt();
+    ROF_DELAY = server.arg("rof").toInt();
+    BURST_COUNT = server.arg("burst_count").toInt();
+    BURST_INTERVAL = server.arg("burst_interval").toInt();
+
+    // 保存到Preferences
+    saveSettings();
+    
+    server.send(200, "text/plain", "搞撚掂！");
+  } else {
+    server.send(400, "text/plain", "缺少參數");
+  }
+}
+
+void handleSave() {
+  handleSetParams(); // 直接呼叫相同的處理邏輯
+}
