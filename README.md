@@ -7,7 +7,7 @@ Esp32 Super mini x1
 
 IRLB8743 x1
 
-SB560 x1
+SB560 x1 
 
 10歐電阻x1
 
