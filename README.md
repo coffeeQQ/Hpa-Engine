@@ -1,4 +1,9 @@
 # Hpa-Engine
+
+
+
+![Image of PCB ](https://github.com/coffeeQQ/Hpa-Engine/blob/main/PHOTO/Screenshot%202025-07-07%20222327.png)
+
 需要準備以下材料
 -
 控制板部分
