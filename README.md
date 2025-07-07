@@ -48,8 +48,9 @@ BPT1/4-6mmPu管快接 x1
 ![Image of PCB ](https://github.com/coffeeQQ/Hpa-Engine/blob/main/PHOTO/Screenshot%202025-07-07%20215032.png)
 -
 
-工具部分
+工具,其他部分
 
+需要打磨很多槍身部位
 鋸子 銼刀 螺絲刀 鉗子 端子鉗 烙鐵 錫線 絲錐BPT1/4 （用於攻3D打印件牙）
 
 
