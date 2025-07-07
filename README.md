@@ -21,6 +21,7 @@ XH2.54 2Pin90度插座x1
 
 24awg導線2m
 ![Image of PCB ](https://github.com/coffeeQQ/Hpa-Engine/blob/main/PHOTO/Screenshot%20.png)
+![Image of PCB ](https://github.com/coffeeQQ/Hpa-Engine/blob/main/PHOTO/Screenshot%202025-07-07%20215108.png)
 
 -
 
